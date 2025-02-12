@@ -264,7 +264,7 @@ class _HomeState extends State<Home> {
                   ),
 
                 ),
-                SizedBox(height: 10),
+
                 ElevatedButton(
                   onPressed: () {
                     Navigator.push(
@@ -278,6 +278,10 @@ class _HomeState extends State<Home> {
                   ),
                   child: Text('Check Wallet Balance'),
                 ),
+                ElevatedButton(onPressed: (){Navigator.push(context, MaterialPageRoute(builder: (context) => GameHistoryPage()));}, child: Text('Game History'), style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.black,
+                    foregroundColor: Colors.white,
+                ),)
               ],
             ),
           )
@@ -292,6 +296,70 @@ class _HomeState extends State<Home> {
       );
   }
 }
+class GameHistoryPage extends StatelessWidget {
+  GameHistoryPage({super.key});
+  User? user= FirebaseAuth.instance.currentUser;
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        iconTheme: IconThemeData(
+          color: Colors.white,
+        ),
+        backgroundColor: Colors.black,
+        title: Text("Game History",
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+          ),
+
+        ),
+        centerTitle: true,
+      ),
+      body: user==null ? Center(child: Text("No user found"),) : StreamBuilder<QuerySnapshot>(stream: FirebaseFirestore.instance.collection('users').doc(user!.uid).collection('game_history').orderBy('timestamp', descending: true).snapshots(), builder: (context,snapshot){
+    if (snapshot.connectionState == ConnectionState.waiting) {
+    return Center(child: CircularProgressIndicator());
+    }
+    if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+    return Center(child: Text("No game history available",
+    style: TextStyle(
+      color: Colors.black,
+      fontWeight: FontWeight.bold,
+      fontSize: 30.0,
+    )));
+    }
+    var historyDocs = snapshot.data!.docs;
+    return ListView.builder(
+      itemCount: historyDocs.length,
+      itemBuilder: (context, index) {
+        var data = historyDocs[index].data() as Map<String, dynamic>;
+
+        return Card(
+          margin: EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          child: ListTile(
+            leading: Icon(Icons.casino, color: Colors.blue),
+            title: Text("Game Mode: ${data['game_mode']}"),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text("Result: ${data['result']}"),
+                Text("New Wallet Balance: ${data['wblnc']}"),
+                Text("Dice Numbers: ${data['dicenumbers'].toString()}"),
+              ],
+            ),
+            trailing: Icon(
+              data['result'].contains("Win") ? Icons.thumb_up : Icons.thumb_down,
+              color: data['result'].contains("Win") ? Colors.green : Colors.red,
+            ),
+          ),
+        );
+      },
+    );
+      },
+      ));
+  }
+}
+
 class GameMode extends StatefulWidget {
   const GameMode({super.key});
 
@@ -562,6 +630,50 @@ class _PlayGamePageState extends State<PlayGamePage> {
     _diceNumbers=[1,1,1,1];
   }
 
+  void updateHistory() async {
+    String gameMode;
+    String result;
+    if (twoalike) {
+      gameMode = 'Two Alike';
+      if (gameResult){
+        result='Win +${wage*2}';
+      }
+      else{
+        result = 'Loss -${wage*2}';
+      }
+
+    }
+    else if (threealike) {
+      gameMode = 'Three Alike';
+      if (gameResult){
+        result='Win +${wage*3}';
+      }
+      else{
+        result = 'Loss -${wage*3}';
+      }
+    }
+
+    else {
+      gameMode = 'Four Alike';
+      if (gameResult){
+        result='Win +${wage*4}';
+      }
+      else{
+        result = 'Loss -${wage*4}';
+      }
+    }
+    User? user= FirebaseAuth.instance.currentUser;
+    if (user!=null){
+    await FirebaseFirestore.instance.collection('users').doc(user.uid).collection('game_history').doc().set({
+      'game_mode': gameMode,
+      'result': result,
+      'wblnc' : wblnc,
+      'dicenumbers' : _diceNumbers,
+      'timestamp': FieldValue.serverTimestamp(),
+    });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return WillPopScope(
@@ -600,7 +712,7 @@ class _PlayGamePageState extends State<PlayGamePage> {
               enabled: isInputEnabled,
               decoration: InputDecoration(
                 border: OutlineInputBorder(),
-                labelText: 'Enter wager amount (Max: ${maxWager.toInt()}',
+                labelText: 'Enter wager amount (Max: ${maxWager.toInt()})',
                 errorText: isValidWager || _wagerController.text.isEmpty ? null
                     : 'Invalid wager. Must be an integer within limited balance.',
 
@@ -651,6 +763,7 @@ class _PlayGamePageState extends State<PlayGamePage> {
                 ElevatedButton(
                   onPressed: () {
                     Navigator.pop(context);
+                    updateHistory();
                     resetGame();
 
                   },
